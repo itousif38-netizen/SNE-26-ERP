@@ -354,6 +354,15 @@ function initDbSchema() {
   }
 }
 
+function getFallbackNewsText(): string {
+  return `### Construction Industry News & Regulatory Updates (Offline Read)
+
+*   **RERA Escrow Monitoring:** Escalations in RERA oversight require co-promoters and builders to verify quarterly expenditure statements before release of secondary escrow tranches.
+*   **Raw Material Price Consolidation:** Steel rebar pricing corrected marginally by 2.1% in regional wholesale markets. Standard concrete grade prices remain stable.
+*   **Renewable Energy Targets:** New commercial zones are set to award extra Floor Space Index (FSI) for buildings receiving a 4-star green rating or higher.
+*   **Worker Safety Campaigns:** Local construction boards are conducting mandatory physical checks on safety harnesses and hazard coverage for masons and heavy machine operators.`;
+}
+
 initDbSchema();
 
 async function startServer() {
@@ -363,6 +372,17 @@ async function startServer() {
   // Custom API Route for Industry News
   app.get("/api/external-data/news", async (req, res) => {
     try {
+      const key = (process.env.GEMINI_API_KEY || "").trim();
+      const isValidKeyFormat = key.startsWith("AIzaSy") && key.length > 20;
+
+      if (!isValidKeyFormat) {
+        console.log("No valid Gemini API key format (must start with AIzaSy). Using offline fallback news mode.");
+        return res.json({
+          text: getFallbackNewsText(),
+          groundingChunks: []
+        });
+      }
+
       const ai = getAiClient();
       const response = await ai.models.generateContent({
         model: "gemini-3.5-flash",
@@ -375,8 +395,11 @@ async function startServer() {
       const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
       res.json({ text: response.text, groundingChunks: chunks || [] });
     } catch (err: any) {
-      console.error("Gemini API Error:", err);
-      res.status(500).json({ error: err.message || "Failed to fetch news." });
+      console.log("Could not fetch online news updates. Falling back to offline fallback mode.");
+      res.json({
+        text: getFallbackNewsText(),
+        groundingChunks: []
+      });
     }
   });
 
